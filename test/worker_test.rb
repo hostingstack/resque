@@ -325,8 +325,34 @@ context "Resque::Worker" do
     workerA.work(0)
     assert $AFTER_FORK_CALLED
   end
-
+  
   test "returns PID of running process" do
     assert_equal @worker.to_s.split(":")[1].to_i, @worker.pid
+  end
+  
+  test "can block on empty queues until a job is queued" do
+    if child = Kernel.fork
+      begin
+        worker = Resque::Worker.new(:queue1, :queue2)
+
+        processed_jobs = 0
+
+        worker.work(:blocking => true, :interval => 1, :die_if_idle => true) do |job|
+          assert_kind_of Resque::Job, job
+          processed_jobs +=1
+        end
+
+        assert_equal 2, processed_jobs
+      ensure
+        Process.wait(child)
+      end
+    else
+      Resque.reconnect
+
+      Resque::Job.create(:queue2, SomeJob)
+      Resque::Job.create(:queue1, SomeJob)
+
+      exit!
+    end
   end
 end
